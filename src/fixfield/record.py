@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Generic, Self, TypeVar, overload
 from fixfield.field import Field, FieldValue
 from fixfield.types import FixedDecimal
@@ -79,7 +80,7 @@ class Record:
         inv.total = inv.price * inv.tax_rate + inv.price
     """
 
-    def __init_subclass__(cls, **kwargs: object) -> None:
+    def __init_subclass__(cls, serializable: bool = False, **kwargs: object) -> None:
         super().__init_subclass__(**kwargs)
         # Collect all declared fields in declaration order
         all_attrs: dict[str, Field | RecordField] = {
@@ -95,6 +96,17 @@ class Record:
             n: o for n, o in all_attrs.items() if isinstance(o, RecordField)
         }
         cls.__init__ = _make_init(all_attrs)  # type: ignore[method-assign]
+
+        if serializable:
+            missing = [
+                name for name, attr in all_attrs.items()
+                if isinstance(attr, Field) and attr.digits is None
+            ]
+            if missing:
+                raise TypeError(
+                    f"{cls.__name__} declared serializable=True but the following "
+                    f"Fields are missing 'digits': {', '.join(missing)}"
+                )
 
     def __repr__(self) -> str:
         parts = ", ".join(
@@ -113,6 +125,57 @@ class Record:
 
     def to_dict(self) -> dict[str, FixedDecimal | Record]:
         return {name: getattr(self, name) for name in self._all_attrs}
+
+    def to_json(self) -> str:
+        """
+        Serialise the record to a JSON string.
+        ``FixedDecimal`` values are serialised as their canonical string
+        representation (e.g. ``"19.99"``). Nested ``RecordField`` values
+        are serialised as nested objects.
+
+        Example::
+
+            inv.to_json()
+            # '{"price": "19.99", "tax_rate": "0.0825", "total": "21.64"}'
+        """
+        def _to_jsonable(value: object) -> object:
+            if isinstance(value, Record):
+                return {k: _to_jsonable(v) for k, v in value.to_dict().items()}
+            return str(value)  # FixedDecimal.__str__ gives canonical form
+
+        return json.dumps({name: _to_jsonable(getattr(self, name))
+                           for name in self._all_attrs})
+
+    @classmethod
+    def from_json(cls, text: str) -> Self:
+        """
+        Parse a JSON string produced by :meth:`to_json`.
+        Raises ``ValueError`` if a required field is missing from the JSON.
+
+        Example::
+
+            Invoice.from_json('{"price": "19.99", "tax_rate": "0.0825"}')
+        """
+        data: dict[str, object] = json.loads(text)
+        return cls._from_dict(data)
+
+    @classmethod
+    def _from_dict(cls, data: dict[str, object]) -> Self:
+        kwargs: dict[str, object] = {}
+        for name, attr in cls._all_attrs.items():
+            if name not in data:
+                continue
+            value = data[name]
+            if isinstance(attr, RecordField):
+                if not isinstance(value, dict):
+                    raise ValueError(
+                        f"Expected a JSON object for nested field '{name}', "
+                        f"got {type(value).__name__}"
+                    )
+                kwargs[name] = attr.record_type._from_dict(value)
+            else:
+                kwargs[name] = value  # Field.__set__ will coerce the string
+        return cls(**kwargs)  # type: ignore[arg-type]
 
     def to_string(self) -> str:
         """

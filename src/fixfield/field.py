@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import overload
 from fixfield.rounding import RoundingStrategy
-from fixfield.types import FixedDecimal, _NUMBER
+from fixfield.types import FixedDecimal, FieldOverflowError, _NUMBER
 
 type FieldValue = _NUMBER | FixedDecimal
 
@@ -14,10 +14,12 @@ class Field:
         rounding: RoundingStrategy = RoundingStrategy.ROUND_HALF_UP,
         default: _NUMBER | None = None,
         digits: int | None = None,
+        signed: bool = True,
     ) -> None:
         self.places = places
         self.rounding = rounding
         self.digits = digits
+        self.signed = signed
         self.default = (
             FixedDecimal(default, places, rounding, digits)
             if default is not None
@@ -46,9 +48,13 @@ class Field:
 
     def __set__(self, obj: object, value: FieldValue) -> None:
         raw = value.value if isinstance(value, FixedDecimal) else value
-        obj.__dict__[self._attr] = FixedDecimal(
-            raw, self.places, self.rounding, self.digits
-        )
+        coerced = FixedDecimal(raw, self.places, self.rounding, self.digits)
+        if not self.signed and coerced.value < 0:
+            raise FieldOverflowError(
+                f"Field '{self._attr.removeprefix('_field_')}' is unsigned "
+                f"but received negative value {coerced}"
+            )
+        obj.__dict__[self._attr] = coerced
 
     @property
     def width(self) -> int:
@@ -69,5 +75,49 @@ class Field:
     def __repr__(self) -> str:
         return (
             f"Field(places={self.places}, rounding={self.rounding}, "
-            f"digits={self.digits}, default={self.default})"
+            f"digits={self.digits}, default={self.default}, signed={self.signed})"
         )
+
+
+# ---------------------------------------------------------------------------
+# Convenience field factories
+# ---------------------------------------------------------------------------
+
+def CurrencyField(
+    digits: int = 8,
+    rounding: RoundingStrategy = RoundingStrategy.ROUND_HALF_UP,
+    default: _NUMBER | None = None,
+    signed: bool = True,
+) -> Field:
+    """
+    A :class:`Field` pre-configured for currency values (2 decimal places).
+
+    ``digits`` defaults to 8, giving a maximum of ±99,999,999.99.
+
+    Example::
+
+        class Invoice(Record):
+            total = CurrencyField(digits=6)   # max ±999,999.99
+    """
+    return Field(places=2, digits=digits, rounding=rounding,
+                 default=default, signed=signed)
+
+
+def PercentField(
+    digits: int = 3,
+    rounding: RoundingStrategy = RoundingStrategy.ROUND_HALF_UP,
+    default: _NUMBER | None = None,
+    signed: bool = True,
+) -> Field:
+    """
+    A :class:`Field` pre-configured for percentage values (4 decimal places).
+
+    ``digits`` defaults to 3, giving a maximum of ±999.9999.
+
+    Example::
+
+        class TaxRecord(Record):
+            rate = PercentField()   # e.g. 0.0825
+    """
+    return Field(places=4, digits=digits, rounding=rounding,
+                 default=default, signed=signed)
