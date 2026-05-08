@@ -4,6 +4,21 @@ version = "0.1.0"
 description = "Fixed-decimal arithmetic with per-field precision enforcement"
 readme = "README.md"
 requires-python = ">=3.14"
+license = { text = "MIT" }
+authors = [
+    { name = "Charles Reilly", email = "charlesreilly0@gmail.com" },
+]
+keywords = ["decimal", "fixed-point", "cobol", "finance", "precision"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Office/Business :: Financial",
+    "Typing :: Typed",
+]
 dependencies = []
 
 [tool.hatch.build.targets.wheel]
