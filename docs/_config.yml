@@ -1,0 +1,17 @@
+theme: minima
+
+title: fixfield
+description: Fixed-decimal arithmetic for Python with per-field precision enforcement.
+url: "https://charlesreilly0.github.io"
+baseurl: "/fixfield"
+
+show_excerpts: false
+
+minima:
+  skin: classic
+
+header_pages:
+  - index.md
+  - guide.md
+  - api.md
+  - changelog.md
