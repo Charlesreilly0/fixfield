@@ -1,10 +1,13 @@
 from __future__ import annotations
 
-from typing import overload
+from typing import Callable, Generic, TypeVar, overload
 from fixfield.rounding import RoundingStrategy
 from fixfield.types import FixedDecimal, FieldOverflowError, _NUMBER
 
 type FieldValue = _NUMBER | FixedDecimal
+
+_T = TypeVar("_T")
+_MISSING = object()  # sentinel for "field has never been set"
 
 
 class Field:
@@ -77,6 +80,138 @@ class Field:
             f"Field(places={self.places}, rounding={self.rounding}, "
             f"digits={self.digits}, default={self.default}, signed={self.signed})"
         )
+
+
+# ---------------------------------------------------------------------------
+# ExternalField — pass-through descriptor for non-decimal values
+# ---------------------------------------------------------------------------
+
+class ExternalField(Generic[_T]):
+    """
+    A pass-through descriptor for storing any Python value inside a
+    :class:`Record` without fixed-decimal coercion.
+
+    Use this when a record needs to carry non-numeric data — UUIDs, strings,
+    enums, plain ints, etc. — alongside its :class:`Field` declarations.
+
+    ``ExternalField`` participates in the generated ``__init__``, ``__repr__``,
+    ``__eq__``, ``to_dict()``, and ``to_json()`` / ``from_json()``.
+
+    It does **not** support fixed-width serialisation (``to_string`` /
+    ``from_string``). Calling those methods on a ``Record`` that contains an
+    ``ExternalField`` raises ``TypeError``.
+
+    Parameters
+    ----------
+    field_type:
+        The Python type to store. Used for type-checking on assignment and
+        as the default ``json_decoder``.
+    default:
+        Static default value returned when the field has not been set.
+        Mutually exclusive with ``default_factory``.
+    default_factory:
+        Zero-argument callable invoked once per instance to produce a default
+        value. Use this for mutable defaults (e.g. ``uuid.uuid4``).
+    json_encoder:
+        Callable used by ``to_json()`` to serialise the value.
+        Defaults to ``str``.
+    json_decoder:
+        Callable used by ``from_json()`` to deserialise the stored JSON value
+        back to the original type. Defaults to ``field_type`` when provided,
+        or ``None`` (identity / raw JSON string) otherwise.
+
+    Example::
+
+        import uuid
+        from fixfield import Record, Field, ExternalField, CurrencyField
+
+        class Order(Record):
+            order_id  = ExternalField(uuid.UUID, default_factory=uuid.uuid4)
+            reference = ExternalField(str, default="")
+            total     = CurrencyField()
+
+        o = Order(reference="ORD-001", total="99.99")
+        print(o.order_id)    # UUID('...')
+        print(o.to_json())
+        # '{"order_id": "...", "reference": "ORD-001", "total": "99.99"}'
+    """
+
+    def __init__(
+        self,
+        field_type: type[_T] = object,  # type: ignore[assignment]
+        *,
+        default: _T | None = None,
+        default_factory: Callable[[], _T] | None = None,
+        json_encoder: Callable[[_T], object] | None = None,
+        json_decoder: Callable[..., _T] | None = None,
+    ) -> None:
+        if default is not None and default_factory is not None:
+            raise ValueError(
+                "Specify either 'default' or 'default_factory', not both"
+            )
+        self.field_type = field_type
+        self._default = default
+        self.default_factory = default_factory
+        # Default encoder: str(); default decoder: field_type if not bare object
+        self.json_encoder: Callable[[_T], object] = json_encoder or str
+        self.json_decoder: Callable[[object], _T] | None = (
+            json_decoder
+            if json_decoder is not None
+            else (field_type if field_type is not object else None)  # type: ignore[return-value]
+        )
+        self._attr: str = ""   # set by __set_name__
+        self._name: str = ""
+
+    def __set_name__(self, owner: type, name: str) -> None:
+        self._attr = f"_external_{name}"
+        self._name = name
+
+    @overload
+    def __get__(self, obj: None, objtype: type) -> ExternalField[_T]: ...
+    @overload
+    def __get__(self, obj: object, objtype: type) -> _T: ...
+
+    def __get__(self, obj: object | None, objtype: type) -> ExternalField[_T] | _T:
+        if obj is None:
+            return self
+        value = obj.__dict__.get(self._attr, _MISSING)
+        if value is _MISSING:
+            if self._default is not None:
+                return self._default
+            if self.default_factory is not None:
+                # Generate once and cache on the instance
+                generated = self.default_factory()
+                obj.__dict__[self._attr] = generated
+                return generated
+            return None  # type: ignore[return-value]
+        return value  # type: ignore[return-value]
+
+    def __set__(self, obj: object, value: object) -> None:
+        if (
+            self.field_type is not object
+            and value is not None
+            and not isinstance(value, self.field_type)
+        ):
+            raise TypeError(
+                f"ExternalField '{self._name}' expects "
+                f"{self.field_type.__name__}, got {type(value).__name__}"
+            )
+        obj.__dict__[self._attr] = value
+
+    @property
+    def default(self) -> _T | None:
+        return self._default
+
+    @property
+    def width(self) -> int:
+        raise TypeError(
+            f"ExternalField '{self._name}' does not support fixed-width "
+            "serialisation. Use to_json() / from_json() instead, or replace "
+            "with a Field."
+        )
+
+    def __repr__(self) -> str:
+        return f"ExternalField({self.field_type.__name__})"
 
 
 # ---------------------------------------------------------------------------

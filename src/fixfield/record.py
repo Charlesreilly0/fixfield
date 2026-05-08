@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from typing import Generic, Self, TypeVar, overload
-from fixfield.field import Field, FieldValue
+from fixfield.field import Field, FieldValue, ExternalField
 from fixfield.types import FixedDecimal
 
 _R = TypeVar("_R", bound="Record")
@@ -83,21 +83,32 @@ class Record:
     def __init_subclass__(cls, serializable: bool = False, **kwargs: object) -> None:
         super().__init_subclass__(**kwargs)
         # Collect all declared fields in declaration order
-        all_attrs: dict[str, Field | RecordField] = {
+        all_attrs: dict[str, Field | RecordField | ExternalField] = {
             name: obj
             for name, obj in cls.__dict__.items()
-            if isinstance(obj, (Field, RecordField))
+            if isinstance(obj, (Field, RecordField, ExternalField))
         }
-        cls._all_attrs: dict[str, Field | RecordField] = all_attrs
+        cls._all_attrs: dict[str, Field | RecordField | ExternalField] = all_attrs
         cls._fields: dict[str, Field] = {
             n: o for n, o in all_attrs.items() if isinstance(o, Field)
         }
         cls._record_fields: dict[str, RecordField] = {
             n: o for n, o in all_attrs.items() if isinstance(o, RecordField)
         }
+        cls._external_fields: dict[str, ExternalField] = {
+            n: o for n, o in all_attrs.items() if isinstance(o, ExternalField)
+        }
         cls.__init__ = _make_init(all_attrs)  # type: ignore[method-assign]
 
         if serializable:
+            # ExternalFields always block fixed-width serialisation
+            raw_names = list(cls._external_fields.keys())
+            if raw_names:
+                raise TypeError(
+                    f"{cls.__name__} declared serializable=True but contains "
+                    f"ExternalFields which do not support fixed-width serialisation: "
+                    f"{', '.join(raw_names)}"
+                )
             missing = [
                 name for name, attr in all_attrs.items()
                 if isinstance(attr, Field) and attr.digits is None
@@ -110,7 +121,9 @@ class Record:
 
     def __repr__(self) -> str:
         parts = ", ".join(
-            f"{name}={getattr(self, name)!s}"
+            f"{name}={getattr(self, name)!r}"
+            if isinstance(self._all_attrs[name], ExternalField)
+            else f"{name}={getattr(self, name)!s}"
             for name in self._all_attrs
         )
         return f"{type(self).__name__}({parts})"
@@ -138,12 +151,16 @@ class Record:
             inv.to_json()
             # '{"price": "19.99", "tax_rate": "0.0825", "total": "21.64"}'
         """
-        def _to_jsonable(value: object) -> object:
+        def _to_jsonable(name: str, value: object, attrs: dict) -> object:
             if isinstance(value, Record):
-                return {k: _to_jsonable(v) for k, v in value.to_dict().items()}
+                return {k: _to_jsonable(k, v, value._all_attrs)
+                        for k, v in value.to_dict().items()}
+            attr = attrs[name]
+            if isinstance(attr, ExternalField) and callable(attr.json_encoder):
+                return attr.json_encoder(value)
             return str(value)  # FixedDecimal.__str__ gives canonical form
 
-        return json.dumps({name: _to_jsonable(getattr(self, name))
+        return json.dumps({name: _to_jsonable(name, getattr(self, name), self._all_attrs)
                            for name in self._all_attrs})
 
     @classmethod
@@ -173,6 +190,12 @@ class Record:
                         f"got {type(value).__name__}"
                     )
                 kwargs[name] = attr.record_type._from_dict(value)
+            elif isinstance(attr, ExternalField):
+                # Apply json_decoder if provided, otherwise store raw JSON value
+                if callable(attr.json_decoder):
+                    kwargs[name] = attr.json_decoder(value)
+                else:
+                    kwargs[name] = value
             else:
                 kwargs[name] = value  # Field.__set__ will coerce the string
         return cls(**kwargs)  # type: ignore[arg-type]
@@ -217,11 +240,11 @@ class Record:
         return cls(**kwargs)
 
 
-def _make_init(all_attrs: dict[str, Field | RecordField]):
+def _make_init(all_attrs: dict[str, Field | RecordField | ExternalField]):
     """Generates a keyword-only __init__ for all declared attrs."""
     attr_names = list(all_attrs.keys())
 
-    def __init__(self: Record, **kwargs: FieldValue | Record) -> None:
+    def __init__(self: Record, **kwargs: FieldValue | Record | object) -> None:
         for name in attr_names:
             value = kwargs.get(name)
             attr = all_attrs[name]

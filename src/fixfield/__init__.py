@@ -1,7 +1,7 @@
 from fixfield.rounding import RoundingStrategy
 from fixfield.types import FixedDecimal, FieldOverflowError
 from fixfield.field import (
-    Field, FieldValue, FieldTemplate,
+    Field, FieldValue, FieldTemplate, ExternalField,
     CurrencyField, PercentField,
     QuantityField, RateField, AccountNumberField,
 )
@@ -17,6 +17,7 @@ __all__ = [
     "Field",
     "FieldValue",
     "FieldTemplate",
+    "ExternalField",
     "CurrencyField",
     "PercentField",
     "QuantityField",

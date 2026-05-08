@@ -5,7 +5,9 @@ Each Record declares its fields using the shared templates from fields.py.
 The Branch is embedded inside Account via RecordField — so a fixed-width
 export of an Account carries its branch data as a contiguous block.
 """
-from fixfield import Record, RecordField
+import uuid
+
+from fixfield import ExternalField, Record, RecordField
 from examples.banking.fields import MoneyField, RateField, IdField
 
 
@@ -40,6 +42,8 @@ class Transaction(Record):
     A single debit or credit movement against an account.
     Not serializable (no digits on description — strings live outside fixfield).
     """
-    tx_id      = IdField()
+    tx_id      = ExternalField(uuid.UUID, default_factory=uuid.uuid4,
+                               json_encoder=str, json_decoder=uuid.UUID)
     account_id = IdField()
     amount     = MoneyField()             # positive = credit, negative = debit
+    memo       = ExternalField(str, default="")

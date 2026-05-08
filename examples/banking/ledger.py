@@ -19,18 +19,18 @@ def _new_tx_id() -> int:
     return tx_id
 
 
-def deposit(account: Account, amount: str | float) -> Transaction:
+def deposit(account: Account, amount: str | float, memo: str = "") -> Transaction:
     """Credit ``amount`` to ``account``. Returns the resulting Transaction."""
     tx = Transaction(
-        tx_id=str(_new_tx_id()),
         account_id=str(account.account_id),
         amount=amount,
+        memo=memo,
     )
     account.balance = account.balance + tx.amount
     return tx
 
 
-def withdraw(account: Account, amount: str | float) -> Transaction:
+def withdraw(account: Account, amount: str | float, memo: str = "") -> Transaction:
     """
     Debit ``amount`` from ``account``.
 
@@ -41,9 +41,9 @@ def withdraw(account: Account, amount: str | float) -> Transaction:
     The caller is responsible for enforcing any overdraft policy.
     """
     tx = Transaction(
-        tx_id=str(_new_tx_id()),
         account_id=str(account.account_id),
         amount=f"-{amount}",
+        memo=memo,
     )
     account.balance = account.balance + tx.amount
     return tx

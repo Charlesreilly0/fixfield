@@ -38,8 +38,16 @@ print(repr(bob))
 # 2. Basic operations
 # ---------------------------------------------------------------------------
 
-deposit(alice, "500.00")
-withdraw(bob, "75.50")
+deposit_tx = deposit(alice, "500.00", memo="Initial top-up")
+withdraw_tx = withdraw(bob, "75.50", memo="ATM withdrawal")
+
+print("\n=== Transaction with ExternalField (UUID tx_id + memo) ===")
+print(repr(deposit_tx))
+print(f"tx_id type : {type(deposit_tx.tx_id).__name__}")
+print(f"JSON       : {deposit_tx.to_json()}")
+restored_tx = type(deposit_tx).from_json(deposit_tx.to_json())
+assert restored_tx.tx_id == deposit_tx.tx_id, "tx_id round-trip failed!"
+print("tx_id round-trip OK ✓")
 
 print("\n=== After deposit / withdrawal ===")
 print(f"Alice balance : {alice.balance}")
