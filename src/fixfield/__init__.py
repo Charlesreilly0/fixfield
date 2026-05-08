@@ -7,7 +7,11 @@ from fixfield.field import (
 )
 from fixfield.record import Record, RecordField
 
-__version__ = "0.2.0"
+from importlib.metadata import version, PackageNotFoundError
+try:
+    __version__: str = version("fixfield")
+except PackageNotFoundError:
+    __version__ = "unknown"
 
 __all__ = [
     "__version__",

@@ -192,7 +192,8 @@ def test_public_api_exports():
 def test_version_is_string():
     import fixfield
     assert isinstance(fixfield.__version__, str)
-    assert fixfield.__version__ == "0.1.0"
+    assert fixfield.__version__ != "unknown"
+    assert len(fixfield.__version__) > 0
 
 
 # ---------------------------------------------------------------------------
