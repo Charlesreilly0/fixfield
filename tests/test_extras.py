@@ -174,7 +174,15 @@ def test_public_api_exports():
         "FieldOverflowError",
         "Field",
         "FieldValue",
+        "FieldTemplate",
+        "ExternalField",
+        "CurrencyField",
+        "PercentField",
+        "QuantityField",
+        "RateField",
+        "AccountNumberField",
         "Record",
+        "RecordField",
     }
     assert expected.issubset(set(fixfield.__all__))
     for name in expected:

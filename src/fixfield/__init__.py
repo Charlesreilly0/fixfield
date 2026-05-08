@@ -7,7 +7,7 @@ from fixfield.field import (
 )
 from fixfield.record import Record, RecordField
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = [
     "__version__",
