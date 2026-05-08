@@ -1,0 +1,20 @@
+[project]
+name = "fixfield"
+version = "0.1.0"
+description = "Fixed-decimal arithmetic with per-field precision enforcement"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = []
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/fixfield"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+]
+
